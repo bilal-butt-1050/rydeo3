@@ -1,0 +1,44 @@
+.container {
+  padding: 40px;
+  text-align: center;
+  font-family: Arial, sans-serif;
+}
+
+.title {
+  font-size: 28px;
+  margin-bottom: 30px;
+}
+
+.startBtn,
+.stopBtn {
+  padding: 12px 20px;
+  font-size: 16px;
+  border: none;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.2s ease;
+}
+
+.startBtn {
+  background: #28a745;
+  color: #fff;
+}
+
+.startBtn:hover {
+  background: #218838;
+}
+
+.stopBtn {
+  background: #dc3545;
+  color: #fff;
+}
+
+.stopBtn:hover {
+  background: #c82333;
+}
+
+.status {
+  margin-top: 25px;
+  font-size: 18px;
+  color: #333;
+}

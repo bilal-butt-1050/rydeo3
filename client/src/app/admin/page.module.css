@@ -1,0 +1,20 @@
+.adminContainer {
+  display: flex;
+  height: 100vh;
+  background-color: #f9fafb;
+}
+
+.mainContent {
+  flex: 1;
+  padding: 2rem;
+}
+
+.mainContent h1 {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+}
+
+.mainContent p {
+  color: #6b7280;
+  font-size: 1rem;
+}
