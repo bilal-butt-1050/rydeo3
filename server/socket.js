@@ -1,48 +1,42 @@
-// server/socket.js
-import { Server } from "socket.io";
-import { Driver } from "./models/user.model.js"; // your Driver discriminator
-import mongoose from "mongoose";
+import { Driver } from "./models/user.model.js";
 
-export default function setupSocket(server) {
-  const io = new Server(server, {
-    cors: {
-      origin: true,
-      credentials: true,
-    },
-  });
-
-  // map driverId -> socketId
+export default function setupSocket(io) {
+  // Map driverId -> socketId for tracking
   const driverSockets = new Map();
 
   io.on("connection", (socket) => {
     console.log("🔌 Socket connected:", socket.id);
 
-    // STUDENT JOIN
+    /* =============== STUDENT EVENTS =============== */
+    
     socket.on("student:joinRoute", async ({ routeId }) => {
       try {
-        if (!routeId) return;
+        if (!routeId) {
+          console.warn("student:joinRoute - missing routeId");
+          return;
+        }
+
         const room = `route_${routeId}`;
         socket.join(room);
         console.log(`🎓 ${socket.id} joined ${room}`);
 
-        // find any driver assigned to this route
+        // Find driver for this route and send current status
         const driver = await Driver.findOne({ route: routeId }).select(
           "_id isSharingLocation location name"
         );
 
         if (driver) {
-          // notify this student of current driver sharing state
+          // Send driver sharing status
           socket.emit("driver:status", {
             driverId: driver._id.toString(),
             state: Boolean(driver.isSharingLocation),
           });
 
-          // if driver is sharing and has last known coords, send them
+          // If driver is sharing and has location, send it
           if (
             driver.isSharingLocation &&
-            driver.location &&
-            driver.location.lat != null &&
-            driver.location.lng != null
+            driver.location?.lat != null &&
+            driver.location?.lng != null
           ) {
             socket.emit("location:update", {
               driverId: driver._id.toString(),
@@ -56,90 +50,106 @@ export default function setupSocket(server) {
       }
     });
 
-    // DRIVER START SHARING
+    /* =============== DRIVER EVENTS =============== */
+    
     socket.on("driver:startSharing", async ({ driverId, routeId }) => {
       try {
         if (!driverId || !routeId) {
-          console.warn("driver:startSharing missing driverId/routeId");
+          console.warn("driver:startSharing - missing driverId or routeId");
           return;
         }
 
-        // validate driver exists and route matches
+        // Validate driver exists
         const driver = await Driver.findById(driverId).select("route");
         if (!driver) {
-          console.warn("driver not found:", driverId);
+          console.warn("driver:startSharing - driver not found:", driverId);
           return;
         }
-        // If driver.route exists and doesn't match provided routeId, log but continue
+
+        // Check if route matches (optional but recommended)
         if (driver.route && driver.route.toString() !== routeId.toString()) {
           console.warn(
-            `Driver route mismatch: driver.route=${driver.route} provided=${routeId}`
+            `driver:startSharing - route mismatch: expected ${driver.route}, got ${routeId}`
           );
-          // optional: you could reject here
         }
 
-        // store driver socket
+        // Track driver socket
         driverSockets.set(driverId.toString(), socket.id);
 
+        // Join route room
         const room = `route_${routeId}`;
         socket.join(room);
 
-        // update DB flag
+        // Update DB
         await Driver.findByIdAndUpdate(driverId, { isSharingLocation: true });
 
-        // broadcast to students in room that driver started sharing
+        // Notify all students in the room
         io.to(room).emit("driver:status", {
-          driverId,
+          driverId: driverId.toString(),
           state: true,
         });
 
-        console.log(`🚚 Driver ${driverId} joined ${room} and started sharing`);
+        console.log(`🚚 Driver ${driverId} started sharing in ${room}`);
       } catch (err) {
         console.error("driver:startSharing error:", err);
       }
     });
 
-    // DRIVER STOP SHARING
     socket.on("driver:stopSharing", async ({ driverId, routeId }) => {
       try {
-        if (!driverId || !routeId) return;
+        if (!driverId || !routeId) {
+          console.warn("driver:stopSharing - missing driverId or routeId");
+          return;
+        }
 
         const room = `route_${routeId}`;
         socket.leave(room);
 
+        // Update DB
         await Driver.findByIdAndUpdate(driverId, { isSharingLocation: false });
 
+        // Notify students
         io.to(room).emit("driver:status", {
-          driverId,
+          driverId: driverId.toString(),
           state: false,
         });
 
+        // Remove from tracking
         driverSockets.delete(driverId.toString());
 
-        console.log(`🛑 Driver ${driverId} left ${room} and stopped sharing`);
+        console.log(`🛑 Driver ${driverId} stopped sharing in ${room}`);
       } catch (err) {
         console.error("driver:stopSharing error:", err);
       }
     });
 
-    // DRIVER LOCATION UPDATE (live)
     socket.on("driver:location", async ({ driverId, routeId, lat, lng }) => {
       try {
-        if (!driverId || !routeId) return;
-        // validate numbers
+        if (!driverId || !routeId) {
+          console.warn("driver:location - missing driverId or routeId");
+          return;
+        }
+
+        // Validate coordinates
         const latNum = Number(lat);
         const lngNum = Number(lng);
-        if (Number.isNaN(latNum) || Number.isNaN(lngNum)) return;
+        
+        if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) {
+          console.warn("driver:location - invalid coordinates:", { lat, lng });
+          return;
+        }
 
-        // Persist last known location to DB (non-blocking if you want)
-        await Driver.findByIdAndUpdate(driverId, {
+        // Update DB (non-blocking)
+        Driver.findByIdAndUpdate(driverId, {
           location: { lat: latNum, lng: lngNum },
+        }).catch(err => {
+          console.error("Failed to persist driver location:", err);
         });
 
-        // Broadcast to everyone in route room
+        // Broadcast to room
         const room = `route_${routeId}`;
         io.to(room).emit("location:update", {
-          driverId,
+          driverId: driverId.toString(),
           lat: latNum,
           lng: lngNum,
         });
@@ -148,24 +158,34 @@ export default function setupSocket(server) {
       }
     });
 
-    // DISCONNECT: if a driver socket disconnects, try to find driver and mark stopped
+    /* =============== DISCONNECT =============== */
+    
     socket.on("disconnect", async () => {
       try {
         console.log("⚰️ Socket disconnected:", socket.id);
-        // find driver entry in driverSockets map
+
+        // Find if this was a driver socket
         for (const [driverId, sId] of driverSockets.entries()) {
           if (sId === socket.id) {
-            console.log("Driver socket disconnected -> clearing sharing flag:", driverId);
-            // set DB flag false and notify route room
+            console.log("Driver socket disconnected:", driverId);
+
+            // Get driver to find route
             const driver = await Driver.findById(driverId).select("route");
-            if (driver) {
+            if (driver && driver.route) {
               const room = `route_${driver.route}`;
-              await Driver.findByIdAndUpdate(driverId, { isSharingLocation: false });
+
+              // Mark as not sharing
+              await Driver.findByIdAndUpdate(driverId, { 
+                isSharingLocation: false 
+              });
+
+              // Notify students
               io.to(room).emit("driver:status", {
-                driverId,
+                driverId: driverId.toString(),
                 state: false,
               });
             }
+
             driverSockets.delete(driverId);
             break;
           }

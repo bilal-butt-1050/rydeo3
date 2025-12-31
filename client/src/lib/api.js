@@ -1,4 +1,3 @@
-// lib/api.js
 import axios from "axios";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
@@ -18,14 +17,22 @@ api.interceptors.request.use(
 );
 
 api.interceptors.response.use(
-  (res) => res.data,
+  (res) => {
+    // Return the full response data (which includes success, message, etc.)
+    return res.data;
+  },
   (err) => {
-    const msg = err.response?.data?.message || "Server error";
+    const msg = err.response?.data?.message || err.response?.data?.error || "Server error";
     console.error("❌ API Error:", msg);
+    
+    // If unauthorized, redirect to login
+    if (err.response?.status === 401 && typeof window !== 'undefined') {
+      window.location.href = '/login';
+    }
+    
     return Promise.reject(new Error(msg));
   }
 );
-
 
 export const authAPI = {
   login: (data) => api.post("/auth/login", data),
@@ -56,17 +63,10 @@ export const adminAPI = {
   getRoute: (id) => api.get(`/admin/routes/${id}`),
 
   // STOPS (nested under routes)
-  addStop: (routeId, data) =>
-    api.post(`/admin/routes/${routeId}/stops`, data),
-
-  updateStop: (stopId, data) =>
-    api.put(`/admin/routes/stops/${stopId}`, data),
-
-  deleteStop: (stopId) =>
-    api.delete(`/admin/routes/stops/${stopId}`),
-
-  getStops: (routeId) =>
-    api.get(`/admin/routes/${routeId}/stops`),
+  addStop: (routeId, data) => api.post(`/admin/routes/${routeId}/stops`, data),
+  updateStop: (stopId, data) => api.put(`/admin/routes/stops/${stopId}`, data),
+  deleteStop: (stopId) => api.delete(`/admin/routes/stops/${stopId}`),
+  getStops: (routeId) => api.get(`/admin/routes/${routeId}/stops`),
 };
 
 export const driverAPI = {
@@ -77,6 +77,5 @@ export const driverAPI = {
 export const studentAPI = {
   // will add based on backend endpoints
 };
-
 
 export default api;

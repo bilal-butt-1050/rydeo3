@@ -1,81 +1,86 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { authAPI } from "@/lib/api";
 import styles from "./page.module.css";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
+  const router = useRouter();
+
   const [data, setData] = useState({ loginID: "", password: "" });
   const [error, setError] = useState("");
-  const router = useRouter();
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
-  // Check if user is already logged in
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const res = await authAPI.getMe();
-        if (res.success && res.data && res.data.role) {
-          const role = res.data.role;
-          if (role === "admin") router.push("/admin");
-          else if (role === "driver") router.push("/driver");
-          else router.push("/student");
-        }
-      } catch (err) {
-        // Not logged in, continue
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    checkAuth();
-  }, [router]);
+  // Redirect after login
+  const redirectByRole = (role) => {
+    if (role === "admin") router.push("/admin");
+    else if (role === "driver") router.push("/driver");
+    else router.push("/student");
+  };
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    setError("");
+    setLoading(true);
+
     try {
       const res = await authAPI.login(data);
 
-      if (!res.success || !res.data) {
-        setError(res.error || "Invalid response from server");
+      if (!res.success) {
+        setError(res.message || "Login failed");
         return;
       }
 
-      const role = res.data.role;
-      if (role === "admin") router.push("/admin");
-      else if (role === "driver") router.push("/driver");
-      else router.push("/student");
+      const role = res.role;
+      if (!role) {
+        setError("Invalid server response");
+        return;
+      }
+
+      redirectByRole(role);
     } catch (err) {
       setError(err.message || "Login failed");
+    } finally {
+      setLoading(false);
     }
   };
 
-  if (loading)
-    return <p className={styles.loading}>Checking authentication...</p>;
-
   return (
-    <div className={styles.wrapper}>
-      <form onSubmit={handleLogin} className={styles.box}>
-        <h2>Login</h2>
+    <div className={styles.container}>
+      <div className={styles.loginBox}>
+        <h2 className={styles.title}>Login</h2>
 
-        <input
-          placeholder="Login ID"
-          value={data.loginID}
-          onChange={(e) => setData({ ...data, loginID: e.target.value })}
-        />
+        <form className={styles.form} onSubmit={handleLogin}>
+          <label>Login ID</label>
+          <input
+            type="text"
+            value={data.loginID}
+            onChange={(e) => setData({ ...data, loginID: e.target.value })}
+            required
+            disabled={loading}
+          />
 
-        <input
-          placeholder="Password"
-          type="password"
-          value={data.password}
-          onChange={(e) => setData({ ...data, password: e.target.value })}
-        />
+          <label>Password</label>
+          <input
+            type="password"
+            value={data.password}
+            onChange={(e) => setData({ ...data, password: e.target.value })}
+            required
+            disabled={loading}
+          />
 
-        {error && <p className={styles.error}>{error}</p>}
+          {error && <p className={styles.error}>{error}</p>}
 
-        <button type="submit">Login</button>
-      </form>
+          <button
+            type="submit"
+            className={styles.button}
+            disabled={loading}
+          >
+            {loading ? "Logging in..." : "Login"}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }

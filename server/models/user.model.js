@@ -10,7 +10,6 @@ const userSchema = new mongoose.Schema(
     password: { type: String, required: true },
     isActive: { type: Boolean, default: true },
     lastLogin: { type: Date, default: null },
-    // Explicitly define role field for clarity and querying
     role: { 
       type: String, 
       required: true, 
@@ -21,9 +20,11 @@ const userSchema = new mongoose.Schema(
   options
 );
 
-// Hash password before saving
+// Hash password before saving ONLY if password is modified
 userSchema.pre("save", async function (next) {
+  // Only hash if password is actually modified
   if (!this.isModified("password")) return next();
+  
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
   next();

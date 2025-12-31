@@ -1,42 +1,73 @@
-import {  Driver } from "../models/user.model.js";
+import { Driver } from "../models/user.model.js";
 
 export const updateLocation = async (req, res) => {
   try {
-    const driverId = req.user?.id || req.body.driverId;
+    // Get driver ID from authenticated user
+    const driverId = req.user?._id;
 
     if (!driverId) {
-      return res.status(400).json({ message: "Driver ID missing" });
+      return res.status(401).json({ 
+        success: false,
+        message: "Unauthorized" 
+      });
     }
 
     const { lat, lng } = req.body;
 
+    // Validate coordinates
     if (lat == null || lng == null) {
-      return res.status(400).json({ message: "Coordinates missing" });
+      return res.status(400).json({ 
+        success: false,
+        message: "Coordinates are required" 
+      });
+    }
+
+    const latNum = Number(lat);
+    const lngNum = Number(lng);
+
+    if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Invalid coordinates" 
+      });
     }
 
     await Driver.findByIdAndUpdate(driverId, {
-      location: { lat, lng }
+      location: { lat: latNum, lng: lngNum }
     });
 
-    return res.json({ message: "Location updated" });
+    return res.json({ 
+      success: true,
+      message: "Location updated" 
+    });
   } catch (err) {
-    console.error("Location error:", err);
-    res.status(500).json({ message: "Server error" });
+    console.error("Location update error:", err);
+    res.status(500).json({ 
+      success: false,
+      message: "Server error" 
+    });
   }
 };
 
 export const toggleSharing = async (req, res) => {
   try {
-    const driverId = req.user?.id || req.body.driverId;
+    // Get driver ID from authenticated user
+    const driverId = req.user?._id;
 
     if (!driverId) {
-      return res.status(400).json({ message: "Driver ID missing" });
+      return res.status(401).json({ 
+        success: false,
+        message: "Unauthorized" 
+      });
     }
 
     const { state } = req.body;
 
     if (typeof state !== "boolean") {
-      return res.status(400).json({ message: "Sharing state must be boolean" });
+      return res.status(400).json({ 
+        success: false,
+        message: "Sharing state must be boolean" 
+      });
     }
 
     await Driver.findByIdAndUpdate(driverId, {
@@ -44,10 +75,14 @@ export const toggleSharing = async (req, res) => {
     });
 
     return res.json({
+      success: true,
       message: `Sharing turned ${state ? "on" : "off"}`
     });
   } catch (err) {
-    console.error("Sharing error:", err);
-    res.status(500).json({ message: "Server error" });
+    console.error("Toggle sharing error:", err);
+    res.status(500).json({ 
+      success: false,
+      message: "Server error" 
+    });
   }
 };
