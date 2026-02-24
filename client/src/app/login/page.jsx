@@ -1,86 +1,76 @@
 "use client";
-
-import { useState } from "react";
-import { authAPI } from "@/lib/api";
-import styles from "./page.module.css";
+import { useState, useEffect } from "react";
+import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
+import styles from "./page.module.css";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { login, user, loading, authActionLoading } = useAuth();
 
-  const [data, setData] = useState({ loginID: "", password: "" });
+  const [credentials, setCredentials] = useState({ loginID: "", password: "" });
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
 
-  // Redirect after login
-  const redirectByRole = (role) => {
-    if (role === "admin") router.push("/admin");
-    else if (role === "driver") router.push("/driver");
-    else router.push("/student");
+  // Redirect if already logged in
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace(`/${user.role}`);
+    }
+  }, [user, loading, router]);
+
+  const handleChange = (e) => {
+    setCredentials({ ...credentials, [e.target.name]: e.target.value });
   };
 
-  const handleLogin = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
-    setLoading(true);
-
     try {
-      const res = await authAPI.login(data);
-
-      if (!res.success) {
-        setError(res.message || "Login failed");
-        return;
-      }
-
-      const role = res.role;
-      if (!role) {
-        setError("Invalid server response");
-        return;
-      }
-
-      redirectByRole(role);
+      const data = await login(credentials);
+      if (!data?.role) setError("Login successful but role unknown.");
+      // No need to manually redirect; AuthContext state will trigger useEffect redirect
     } catch (err) {
-      setError(err.message || "Login failed");
-    } finally {
-      setLoading(false);
+      setError(err.response?.data?.message || "Invalid credentials");
     }
   };
 
+  // Show loading while checking auth
+  if (loading) {
+    return (
+      <div className={styles.container}>
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.container}>
-      <div className={styles.loginBox}>
-        <h2 className={styles.title}>Login</h2>
+      <form className={styles.loginCard} onSubmit={handleSubmit}>
+        <h2>Login</h2>
 
-        <form className={styles.form} onSubmit={handleLogin}>
-          <label>Login ID</label>
-          <input
-            type="text"
-            value={data.loginID}
-            onChange={(e) => setData({ ...data, loginID: e.target.value })}
-            required
-            disabled={loading}
-          />
+        <input
+          name="loginID"
+          placeholder="Email or ID"
+          value={credentials.loginID}
+          onChange={handleChange}
+          required
+        />
 
-          <label>Password</label>
-          <input
-            type="password"
-            value={data.password}
-            onChange={(e) => setData({ ...data, password: e.target.value })}
-            required
-            disabled={loading}
-          />
+        <input
+          type="password"
+          name="password"
+          placeholder="Password"
+          value={credentials.password}
+          onChange={handleChange}
+          required
+        />
 
-          {error && <p className={styles.error}>{error}</p>}
+        {error && <p className={styles.error}>{error}</p>}
 
-          <button
-            type="submit"
-            className={styles.button}
-            disabled={loading}
-          >
-            {loading ? "Logging in..." : "Login"}
-          </button>
-        </form>
-      </div>
+        <button type="submit" disabled={authActionLoading}>
+          {authActionLoading ? "Verifying..." : "Login"}
+        </button>
+      </form>
     </div>
   );
 }

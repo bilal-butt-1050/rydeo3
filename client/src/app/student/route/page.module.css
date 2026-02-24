@@ -1,0 +1,85 @@
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.infoCard {
+  background: white;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+  margin-bottom: 30px;
+}
+
+.cardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #f1f5f9;
+  padding-bottom: 15px;
+  margin-bottom: 20px;
+}
+
+.routeName {
+  color: #3b82f6;
+  font-weight: 700;
+  background: #eff6ff;
+  padding: 4px 12px;
+  border-radius: 20px;
+}
+
+.driverSection {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.driverAvatar {
+  width: 50px;
+  height: 50px;
+  background: #3b82f6;
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: bold;
+}
+
+.driverDetails h4 { margin: 0; color: #1e293b; }
+.driverDetails p { margin: 2px 0 0 0; color: #64748b; }
+
+.status { margin-left: auto; font-weight: 600; font-size: 0.85rem; }
+.online { color: #10b981; }
+.offline { color: #94a3b8; }
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.table th { background: #f8fafc; padding: 15px; text-align: left; color: #64748b; font-size: 0.8rem; text-transform: uppercase; }
+.table td { padding: 15px; border-top: 1px solid #f1f5f9; }
+
+/* The Highlight for the student's stop */
+.myStopRow {
+  background-color: #eff6ff;
+  border-left: 5px solid #3b82f6;
+}
+
+.myStopBadge {
+  margin-left: 10px;
+  background: #3b82f6;
+  color: white;
+  font-size: 0.65rem;
+  padding: 2px 8px;
+  border-radius: 10px;
+  text-transform: uppercase;
+}
+
+.stopName { font-weight: 600; color: #1e293b; }

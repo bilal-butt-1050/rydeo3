@@ -1,44 +1,165 @@
 .container {
-  padding: 40px;
-  text-align: center;
-  font-family: Arial, sans-serif;
+  display: flex;
+  height: calc(100vh - 40px);
+  gap: 20px;
 }
 
-.title {
-  font-size: 28px;
-  margin-bottom: 30px;
+.statusPanel {
+  width: 320px;
+  background: white;
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.05);
 }
 
-.startBtn,
-.stopBtn {
-  padding: 12px 20px;
-  font-size: 16px;
-  border: none;
+.header h1 {
+  font-size: 1.5rem;
+  margin: 0 0 10px 0;
+  color: #1e293b;
+}
+
+.badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+.online { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; box-shadow: 0 0 10px rgba(34, 197, 94, 0.2); }
+.offline { background: #f1f5f9; color: #64748b; }
+
+.infoRow {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 0.95rem;
+}
+
+.mapContainer {
+  flex: 1;
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+}
+
+.busMarker {
+  font-size: 2rem;
+  filter: drop-shadow(0 4px 6px rgba(0,0,0,0.2));
   cursor: pointer;
-  border-radius: 6px;
-  transition: background 0.2s ease;
+  transition: all 0.2s;
 }
 
-.startBtn {
-  background: #28a745;
-  color: #fff;
+.emptyState {
+  margin-top: 40px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 0.9rem;
+  line-height: 1.5;
 }
 
-.startBtn:hover {
-  background: #218838;
+.etaBox {
+  background: #3b82f6;
+  color: white;
+  padding: 1.5rem;
+  border-radius: 12px;
+  margin-bottom: 1.5rem;
+  text-align: center;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
 }
 
-.stopBtn {
-  background: #dc3545;
-  color: #fff;
+.etaBox span {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  opacity: 0.9;
+  letter-spacing: 0.5px;
 }
 
-.stopBtn:hover {
-  background: #c82333;
+.etaBox h2 {
+  font-size: 2.5rem;
+  margin: 0;
 }
 
-.status {
-  margin-top: 25px;
-  font-size: 18px;
-  color: #333;
+.stopList {
+  margin-top: 1rem;
 }
+
+.stopItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-left: 2px solid #e2e8f0;
+  margin-left: 10px;
+  padding-left: 20px;
+  position: relative;
+}
+
+.stopDot {
+  width: 12px;
+  height: 12px;
+  background: #cbd5e1;
+  border-radius: 50%;
+  position: absolute;
+  left: -7px;
+}
+
+.myStop {
+  border-left-color: #3b82f6;
+  background: #eff6ff;
+  border-radius: 0 8px 8px 0;
+  margin-bottom: 5px;
+}
+
+.myStop .stopDot {
+  background: #3b82f6;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
+}
+
+.myStopBadge {
+  font-size: 0.7rem;
+  color: #3b82f6;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.studentStats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.statCard {
+  background: #1e293b;
+  padding: 15px;
+  border-radius: 12px;
+  text-align: center;
+  color: white;
+  border: 1px solid #334155;
+}
+
+.statCard span {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  color: #94a3b8;
+  display: block;
+  margin-bottom: 5px;
+}
+
+.statCard h2 {
+  margin: 0;
+  color: #3b82f6;
+  font-size: 1.5rem;
+}
+
+.statCard h2 small {
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+

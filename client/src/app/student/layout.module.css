@@ -1,0 +1,63 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background-color: #f8f9fa;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 2rem;
+  background-color: #ffffff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.logo {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #2563eb; /* Rydeo Blue */
+  letter-spacing: -0.5px;
+}
+
+.header nav {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.header nav a {
+  text-decoration: none;
+  color: #4b5563;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.header nav a:hover {
+  color: #2563eb;
+}
+
+.logoutLink {
+  background: none;
+  border: 1px solid #ef4444;
+  color: #ef4444;
+  padding: 0.4rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.logoutLink:hover {
+  background-color: #ef4444;
+  color: white;
+}
+
+.content {
+  flex: 1;
+  padding: 1.5rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}

@@ -1,18 +1,11 @@
-import './globals.css';
-import Navbar from '@/components/Navbar';
-
-
-export const metadata = {
-  title: 'MyApp',
-  description: 'Simple Next.js App',
-};
+import { AuthProvider } from "@/context/AuthContext";
+import "./globals.css";
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body>
-        <Navbar />
-        {children}
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );

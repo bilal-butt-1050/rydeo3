@@ -1,207 +1,177 @@
 "use client";
-
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import LogoutButton from "@/components/logoutButton";
+import mapboxgl from "mapbox-gl";
+import "mapbox-gl/dist/mapbox-gl.css";
+import socket from "@/lib/socket";
+import { useAuth } from "@/context/AuthContext";
+import { studentAPI } from "@/lib/api";
 import styles from "./page.module.css";
-import { authAPI } from "@/lib/api";
-import { initSocket, getSocket } from "@/lib/socket";
-import Map from "@/components/Map";
 
-export default function StudentPage() {
-  const router = useRouter();
-  const [route, setRoute] = useState(null);
-  const [driver, setDriver] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [viewing, setViewing] = useState(false);
-  const [driverSharing, setDriverSharing] = useState(false);
-  const [driverLocation, setDriverLocation] = useState(null);
-  const [error, setError] = useState("");
+mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
-  const socketRef = useRef(null);
-  const mapRef = useRef(null);
-  const listenersAttachedRef = useRef(false);
+export default function StudentLiveTracking() {
+  const { user } = useAuth();
+  const mapContainer = useRef(null);
+  const map = useRef(null);
+  const busMarker = useRef(null);
+  
+  const [routeData, setRouteData] = useState(null);
+  const [isOnline, setIsOnline] = useState(false);
+  
+  // Student-specific metrics
+  const [distToUserStop, setDistToUserStop] = useState(null);
+  const [etaToUserStop, setEtaToUserStop] = useState(null);
 
-  // Initialize socket
+  // Helper: Calculate Haversine Distance (KM)
+  const getDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  };
+
+  // Helper: Fetch Mapbox ETA specifically for the student
+  const fetchStudentETA = async (busLoc, stopLoc) => {
+    try {
+      const url = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${busLoc.lng},${busLoc.lat};${stopLoc.lng},${stopLoc.lat}?access_token=${mapboxgl.accessToken}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.routes && data.routes[0]) {
+        setEtaToUserStop(Math.ceil(data.routes[0].duration / 60));
+      }
+    } catch (err) {
+      console.error("Student ETA Error:", err);
+    }
+  };
+
   useEffect(() => {
-    const setupSocket = async () => {
+    const init = async () => {
       try {
-        socketRef.current = await initSocket();
+        const res = await studentAPI.getMyRoute();
+        const data = res.data.data;
+        setRouteData(data);
+
+        if (!socket.connected) socket.connect();
+
+        socket.on("connect", () => {
+          socket.emit("student:joinRoute", { routeId: data.route._id });
+        });
+
+        if (socket.connected) {
+          socket.emit("student:joinRoute", { routeId: data.route._id });
+        }
+
+        socket.on("driver:status", ({ state }) => {
+          setIsOnline(state);
+          if (!state) {
+            setEtaToUserStop(null);
+            setDistToUserStop(null);
+          }
+        });
+
+        socket.on("location:update", ({ lat, lng }) => {
+          setIsOnline(true);
+          updateBusMarker(lat, lng);
+
+          // Calculate distance and ETA to Student's Preferred Stop
+          const myStop = data.route.stops.find(s => s._id === data.preferredStopId);
+          if (myStop) {
+            const d = getDistance(lat, lng, myStop.coordinates.lat, myStop.coordinates.lng);
+            setDistToUserStop(d.toFixed(2));
+            
+            // Only call Mapbox API if the bus is somewhat close to avoid excessive API calls
+            // or throttle it (here we fetch it on every update, but Mapbox is fast)
+            fetchStudentETA({ lat, lng }, myStop.coordinates);
+          }
+        });
       } catch (err) {
-        console.error("Socket initialization failed:", err);
-        setError("Failed to connect to server");
+        console.error("Initialization error", err);
       }
     };
-    setupSocket();
+
+    init();
+
+    return () => {
+      socket.off("location:update");
+      socket.off("driver:status");
+    };
   }, []);
 
-  // Load student data
+  // Map Initialization logic
   useEffect(() => {
-    async function loadStudent() {
-      try {
-        const res = await authAPI.getMe();
-        
-        if (!res.success) {
-          router.push("/login");
-          return;
-        }
+    if (!routeData || map.current) return;
 
-        if (res.role !== "student") {
-          router.push("/login");
-          return;
-        }
-
-        const routeObj = res.route || null;
-        const driverObj = routeObj?.assignedDriver || null;
-        
-        setRoute(routeObj);
-        setDriver(driverObj);
-
-        if (!routeObj) {
-          setError("No route assigned to your account");
-        }
-      } catch (err) {
-        console.error("Failed to load student:", err);
-        router.push("/login");
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadStudent();
-  }, [router]);
-
-  const attachListeners = () => {
-    if (listenersAttachedRef.current) return;
-
-    const sock = getSocket();
-    if (!sock || !sock.connected) {
-      console.error("Socket not connected");
-      setError("Not connected to server");
-      return;
-    }
-
-    // Remove old listeners first
-    sock.off("driver:status");
-    sock.off("location:update");
-
-    sock.on("driver:status", ({ state }) => {
-      console.log("📍 Driver status:", state);
-      setDriverSharing(state);
-      if (!state) {
-        setDriverLocation(null);
-      }
+    map.current = new mapboxgl.Map({
+      container: mapContainer.current,
+      style: "mapbox://styles/mapbox/light-v11",
+      center: [routeData.route.stops[0].coordinates.lng, routeData.route.stops[0].coordinates.lat],
+      zoom: 14,
     });
 
-    sock.on("location:update", ({ lat, lng }) => {
-      const latNum = Number(lat);
-      const lngNum = Number(lng);
-      
-      if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) {
-        console.error("Invalid location:", { lat, lng });
-        return;
-      }
-
-      console.log("📍 Driver location:", latNum, lngNum);
-      setDriverLocation({ lat: latNum, lng: lngNum });
-      
-      if (mapRef.current) {
-        mapRef.current.updateDriverLocation(lngNum, latNum);
-      }
+    map.current.on("load", () => {
+      routeData.route.stops.forEach((stop) => {
+        const isMyStop = stop._id === routeData.preferredStopId;
+        new mapboxgl.Marker({ color: isMyStop ? "#3b82f6" : "#cbd5e1" })
+          .setLngLat([stop.coordinates.lng, stop.coordinates.lat])
+          .addTo(map.current);
+      });
     });
+  }, [routeData]);
 
-    listenersAttachedRef.current = true;
-  };
-
-  const detachListeners = () => {
-    const sock = getSocket();
-    if (sock) {
-      sock.off("driver:status");
-      sock.off("location:update");
+  const updateBusMarker = (lat, lng) => {
+    if (!map.current) return;
+    if (!busMarker.current) {
+      const el = document.createElement('div');
+      el.className = styles.busMarker;
+      el.innerHTML = '🚌';
+      busMarker.current = new mapboxgl.Marker(el).setLngLat([lng, lat]).addTo(map.current);
+    } else {
+      busMarker.current.setLngLat([lng, lat]);
     }
-    listenersAttachedRef.current = false;
   };
-
-  const startViewing = () => {
-    if (!route?._id) {
-      setError("No route assigned");
-      return;
-    }
-
-    setError("");
-    const sock = getSocket();
-    
-    if (!sock || !sock.connected) {
-      setError("Not connected to server. Please refresh the page.");
-      return;
-    }
-
-    sock.emit("student:joinRoute", { routeId: route._id });
-    console.log("🎓 Joined route:", route._id);
-    
-    attachListeners();
-    setViewing(true);
-  };
-
-  const stopViewing = () => {
-    detachListeners();
-    setViewing(false);
-    setDriverSharing(false);
-    setDriverLocation(null);
-  };
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (viewing) {
-        detachListeners();
-      }
-    };
-  }, [viewing]);
-
-  if (loading) {
-    return (
-      <div className={styles.container}>
-        <p>Loading student data...</p>
-      </div>
-    );
-  }
 
   return (
     <div className={styles.container}>
-      <h1 className={styles.title}>Student Portal</h1>
-      <LogoutButton />
+      <div className={styles.statusPanel}>
+        <header className={styles.header}>
+          <h1>Live Tracking</h1>
+          <div className={`${styles.badge} ${isOnline ? styles.online : styles.offline}`}>
+            {isOnline ? "BUS IS LIVE" : "BUS OFFLINE"}
+          </div>
+        </header>
 
-      {route && <p>Your Route: <strong>{route.name}</strong></p>}
-      {driver && <p>Driver: <strong>{driver.name}</strong></p>}
-      {error && <p style={{ color: 'red' }}>{error}</p>}
-
-      <button
-        className={viewing ? styles.stopBtn : styles.startBtn}
-        onClick={viewing ? stopViewing : startViewing}
-        disabled={!route?._id}
-      >
-        {viewing ? "Stop Viewing" : "Start Viewing Driver"}
-      </button>
-
-      <div className={styles.status}>
-        {viewing && (
-          driverSharing 
-            ? "✅ Driver is sharing location" 
-            : "❌ Driver is not sharing location"
+        {isOnline && distToUserStop && (
+          <div className={styles.studentStats}>
+            <div className={styles.statCard}>
+              <span>To Your Stop</span>
+              <h2>{etaToUserStop || "--"} <small>min</small></h2>
+            </div>
+            <div className={styles.statCard}>
+              <span>Distance</span>
+              <h2>{distToUserStop} <small>km</small></h2>
+            </div>
+          </div>
         )}
+
+        <div className={styles.stopList}>
+          <h3>Route Progress</h3>
+          {routeData?.route.stops.map((stop) => {
+            const isMyStop = stop._id === routeData.preferredStopId;
+            return (
+              <div key={stop._id} className={`${styles.stopItem} ${isMyStop ? styles.myStop : ""}`}>
+                <div className={styles.stopDot}></div>
+                <div className={styles.stopInfo}>
+                  <p className={styles.stopName}>{stop.name}</p>
+                  {isMyStop && <span className={styles.myStopBadge}>Your Pickup Point</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
-      {viewing && driverSharing && (
-        <div className={styles.mapWrapper}>
-          <Map ref={mapRef} />
-        </div>
-      )}
-
-      {driverLocation && (
-        <div className={styles.status}>
-          📍 Driver: {driverLocation.lat.toFixed(5)}, {driverLocation.lng.toFixed(5)}
-        </div>
-      )}
+      <div ref={mapContainer} className={styles.mapContainer} />
     </div>
   );
 }

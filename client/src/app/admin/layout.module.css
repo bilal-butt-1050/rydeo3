@@ -1,0 +1,96 @@
+.wrapper {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background-color: #f3f4f6;
+  font-family: sans-serif;
+}
+
+.sidebar {
+  width: 260px;
+  background-color: #111827; /* Dark Slate */
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  color: white;
+}
+
+.brand {
+  padding: 2rem 1.5rem;
+  border-bottom: 1px solid #1f2937;
+}
+
+.brand h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  color: #3b82f6;
+  letter-spacing: 2px;
+}
+
+.brand p {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+.nav {
+  flex: 1;
+  padding: 1.5rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.navItem {
+  padding: 0.75rem 1rem;
+  color: #d1d5db;
+  text-decoration: none;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.navItem:hover {
+  background-color: #1f2937;
+  color: white;
+}
+
+.footer {
+  padding: 1.5rem;
+  border-top: 1px solid #1f2937;
+}
+
+.userBadge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 1rem;
+}
+
+.avatar {
+  width: 32px;
+  height: 32px;
+  background: #3b82f6;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+}
+
+.logoutBtn {
+  width: 100%;
+  padding: 0.6rem;
+  background-color: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.main {
+  flex: 1;
+  position: relative;
+  overflow-y: auto;
+}

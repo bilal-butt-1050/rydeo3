@@ -1,0 +1,274 @@
+/* Container to hold sidebar and main content */
+.wrapper {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background-color: #f9fafb;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* Sidebar Styling */
+.sidebar {
+  width: 280px;
+  background-color: #111827;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  color: #f3f4f6;
+  box-shadow: 4px 0 10px rgba(0, 0, 0, 0.05);
+  position: relative; /* For toggle button */
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 100;
+}
+
+/* Collapsed State Width */
+.collapsed {
+  width: 80px;
+}
+
+/* Floating Toggle Button */
+.toggleBtn {
+  position: absolute;
+  right: -12px;
+  top: 30px;
+  width: 24px;
+  height: 24px;
+  background-color: #3b82f6;
+  border: none;
+  border-radius: 50%;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 110;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  transition: background 0.2s;
+}
+
+.toggleBtn:hover {
+  background-color: #2563eb;
+}
+
+/* Brand/Logo Area */
+.brand {
+  padding: 2.5rem 1.5rem;
+  border-bottom: 1px solid #1f2937;
+  overflow: hidden;
+  transition: padding 0.3s;
+}
+
+.collapsed .brand {
+  padding: 2.5rem 0;
+  text-align: center;
+}
+
+.brand h1 {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: #3b82f6;
+  letter-spacing: -1px;
+  white-space: nowrap;
+}
+
+.brand p {
+  margin: 4px 0 0 0;
+  font-size: 0.85rem;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+
+/* Navigation Links */
+.nav {
+  flex: 1;
+  padding: 1.5rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.collapsed .nav {
+  padding: 1.5rem 0.5rem;
+  align-items: center;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  padding: 0.85rem 1.25rem;
+  color: #9ca3af;
+  text-decoration: none;
+  border-radius: 10px;
+  font-weight: 500;
+  font-size: 0.95rem;
+  transition: all 0.2s ease-in-out;
+  border-left: 4px solid transparent;
+  white-space: nowrap;
+}
+
+.navItem:hover {
+  background-color: #1f2937;
+  color: #ffffff;
+}
+
+.activeNavItem {
+  background-color: #1e293b;
+  color: #3b82f6 !important;
+  border-left: 4px solid #3b82f6;
+  font-weight: 600;
+}
+
+.collapsed .navItem {
+  padding: 0.85rem 0;
+  justify-content: center;
+  width: 50px;
+  border-left: none; /* Hide bar in collapsed mode or center it */
+}
+
+/* Icon and Label spacing */
+.icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+}
+
+.label {
+  margin-left: 12px;
+  transition: opacity 0.2s;
+}
+
+/* Footer Section */
+.footer {
+  padding: 1.5rem;
+  background-color: #1f2937;
+  border-top: 1px solid #374151;
+  transition: padding 0.3s;
+}
+
+.collapsed .footer {
+  padding: 1.5rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.userBadge {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 1.25rem;
+  overflow: hidden;
+}
+
+.avatar {
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  border-radius: 12px;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: white;
+  font-size: 1.1rem;
+}
+
+.userBadge span {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+/* Settings & Logout Buttons */
+.settingsBtn, .logoutBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 0.75rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.settingsBtn {
+  background: rgba(255, 255, 255, 0.05);
+  color: #94a3b8;
+  margin-bottom: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.settingsBtn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+.logoutBtn {
+  background-color: #dc2626;
+  color: white;
+}
+
+.logoutBtn:hover {
+  background-color: #b91c1c;
+}
+
+.collapsed .settingsBtn, 
+.collapsed .logoutBtn {
+  width: 40px;
+  padding: 0.75rem 0;
+}
+
+/* Main Content Area */
+.main {
+  flex: 1;
+  position: relative;
+  overflow-y: auto;
+  padding: 2rem;
+  transition: padding 0.3s;
+}
+
+/* Loading States */
+.loadingWrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  align-items: center;
+  justify-content: center;
+  background-color: #f3f4f6;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 5px solid #e5e7eb;
+  border-top: 5px solid #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 1.5rem;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loadingWrapper p {
+  color: #4b5563;
+  font-weight: 500;
+  font-size: 1rem;
+}

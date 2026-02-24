@@ -1,248 +1,260 @@
 "use client";
-
-import { useState, useRef, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import mapboxgl from "mapbox-gl";
+import "mapbox-gl/dist/mapbox-gl.css";
+import socket from "@/lib/socket";
+import { useAuth } from "@/context/AuthContext";
+import { driverAPI } from "@/lib/api";
 import styles from "./page.module.css";
-import Map from "@/components/Map";
-import LogoutButton from "@/components/logoutButton";
-import { driverAPI, authAPI } from "@/lib/api";
-import { initSocket, getSocket } from "@/lib/socket";
 
-export default function DriverPage() {
-  const router = useRouter();
-  const [sharing, setSharing] = useState(false);
-  const [error, setError] = useState("");
-  const [driverId, setDriverId] = useState(null);
-  const [route, setRoute] = useState(null);
-  const [loading, setLoading] = useState(true);
+mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
-  const watchIdRef = useRef(null);
-  const mapRef = useRef(null);
-  const socketRef = useRef(null);
+const PROXIMITY_THRESHOLD = 0.2; // 200 meters
 
-  // Initialize socket
+export default function DriverConsole() {
+  const { user } = useAuth();
+  const mapContainer = useRef(null);
+  const map = useRef(null);
+  const marker = useRef(null);
+  
+  const [routeData, setRouteData] = useState(null);
+  const [isSharing, setIsSharing] = useState(false);
+  const [currentLocation, setCurrentLocation] = useState(null);
+  const [watchId, setWatchId] = useState(null);
+  const [activeStopIndex, setActiveStopIndex] = useState(-1);
+  const [distToNext, setDistToNext] = useState(null);
+  const [eta, setEta] = useState(null);
+
+  // Haversine Distance Helper (for proximity detection)
+  const getDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371; 
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    const a = 
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c; 
+  };
+
+  // Fetch Accurate ETA from Mapbox Directions API
+const fetchAccurateETA = async (startLoc, endLoc) => {
+    try {
+      // Use 'driving-traffic' for high-accuracy real-time calculations
+      const profile = "mapbox/driving-traffic"; 
+      const url = `https://api.mapbox.com/directions/v5/${profile}/${startLoc.lng},${startLoc.lat};${endLoc.lng},${endLoc.lat}?access_token=${mapboxgl.accessToken}`;
+      
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      if (data.routes && data.routes[0]) {
+        // duration is in seconds
+        const durationSeconds = data.routes[0].duration; 
+        
+        // Buses typically move 10-20% slower than the average car due to size/stops
+        // If you feel Mapbox is being too conservative (6 mins vs 3 mins), 
+        // you can apply a "Confidence Factor" or just use the raw data.
+        const minutes = Math.round(durationSeconds / 60);
+        
+        setEta(minutes);
+      }
+    } catch (err) {
+      console.error("ETA Fetch Error:", err);
+    }
+  };
+
+  // 1. Initial Load
   useEffect(() => {
-    const setupSocket = async () => {
+    const init = async () => {
       try {
-        socketRef.current = await initSocket();
+        const res = await driverAPI.getAssignedRoute();
+        setRouteData(res.data.data);
+        
+        const savedSharing = localStorage.getItem("driver_sharing_active") === "true";
+        if (savedSharing) {
+          startTracking(res.data.data);
+        }
       } catch (err) {
-        console.error("Socket initialization failed:", err);
-        setError("Failed to connect to server");
+        console.error("Failed to fetch route", err);
       }
     };
-    setupSocket();
+    init();
+    if (!socket.connected) socket.connect();
+
+    return () => {
+      if (watchId) navigator.geolocation.clearWatch(watchId);
+    };
   }, []);
 
-  // Load driver data
+  // 2. Map Setup
   useEffect(() => {
-    async function loadDriver() {
-      try {
-        const res = await authAPI.getMe();
-        
-        if (!res.success) {
-          router.push("/login");
-          return;
-        }
+    if (!routeData || map.current) return;
 
-        if (res.role !== "driver") {
-          router.push("/login");
-          return;
-        }
-
-        setDriverId(res.id);
-        setRoute(res.route || null);
-
-        if (!res.route) {
-          setError("No route assigned to this driver");
-        }
-      } catch (err) {
-        console.error("Failed to load driver:", err);
-        router.push("/login");
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadDriver();
-  }, [router]);
-
-  const startSharing = async () => {
-    if (!driverId || !route?._id) {
-      setError("Driver data not loaded");
-      return;
-    }
-
-    try {
-      await driverAPI.toggleSharing(true);
-      const socket = getSocket();
-      
-      if (socket && socket.connected) {
-        socket.emit("driver:startSharing", { 
-          driverId, 
-          routeId: route._id 
-        });
-        console.log("🚚 Started sharing location");
-      } else {
-        throw new Error("Socket not connected");
-      }
-    } catch (err) {
-      console.error("Start sharing failed:", err);
-      setError(err.message || "Failed to start sharing");
-      throw err;
-    }
-  };
-
-  const stopSharing = async () => {
-    if (!driverId || !route?._id) return;
-
-    try {
-      await driverAPI.toggleSharing(false);
-      const socket = getSocket();
-      
-      if (socket && socket.connected) {
-        socket.emit("driver:stopSharing", { 
-          driverId, 
-          routeId: route._id 
-        });
-        console.log("🛑 Stopped sharing location");
-      }
-    } catch (err) {
-      console.error("Stop sharing failed:", err);
-      setError(err.message || "Failed to stop sharing");
-      throw err;
-    }
-  };
-
-  const sendLocation = (lat, lng) => {
-    if (!driverId || !route?._id) return;
-
-    // Validate coordinates
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      console.error("Invalid coordinates:", { lat, lng });
-      return;
-    }
-
-    // Persist to database (non-blocking)
-    driverAPI.updateLocation({ lat, lng }).catch(e => {
-      console.warn("Failed to persist location:", e.message);
+    map.current = new mapboxgl.Map({
+      container: mapContainer.current,
+      style: "mapbox://styles/mapbox/streets-v12",
+      center: [routeData.route.stops[0].coordinates.lng, routeData.route.stops[0].coordinates.lat],
+      zoom: 13,
     });
 
-    // Emit via socket
-    const socket = getSocket();
-    if (socket && socket.connected) {
-      socket.emit("driver:location", { 
-        driverId, 
-        routeId: route._id, 
-        lat, 
-        lng 
+    map.current.addControl(new mapboxgl.NavigationControl());
+
+    map.current.on("load", async () => {
+      // Draw Markers
+      routeData.route.stops.forEach((stop, i) => {
+        new mapboxgl.Marker({ color: i === 0 ? "#10b981" : i === routeData.route.stops.length - 1 ? "#ef4444" : "#3b82f6" })
+          .setLngLat([stop.coordinates.lng, stop.coordinates.lat])
+          .setPopup(new mapboxgl.Popup().setHTML(`<b>${stop.name}</b>`))
+          .addTo(map.current);
       });
-    }
-  };
 
-  const handleToggle = async () => {
-    if (!driverId || !route?._id) {
-      setError("Driver profile not loaded");
-      return;
-    }
-
-    setError(""); // Clear previous errors
-
-    if (sharing) {
-      // Stop sharing
-      if (watchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-        watchIdRef.current = null;
-      }
-      
-      try {
-        await stopSharing();
-        setSharing(false);
-      } catch (err) {
-        // Error already logged
-      }
-      return;
-    }
-
-    // Start sharing
-    try {
-      await startSharing();
-
-      const id = navigator.geolocation.watchPosition(
-        (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-
-          if (mapRef.current) {
-            mapRef.current.updateDriverLocation(lng, lat);
-          }
-          
-          sendLocation(lat, lng);
-        },
-        (err) => {
-          console.error("Geolocation error:", err);
-          setError("Failed to get location: " + err.message);
-          setSharing(false);
-          watchIdRef.current = null;
-        },
-        { 
-          enableHighAccuracy: true, 
-          maximumAge: 0, 
-          timeout: 10000 
-        }
+      // Draw Route Polyline
+      const coords = routeData.route.stops.map(s => `${s.coordinates.lng},${s.coordinates.lat}`).join(';');
+      const query = await fetch(
+        `https://api.mapbox.com/directions/v5/mapbox/driving/${coords}?geometries=geojson&overview=full&access_token=${mapboxgl.accessToken}`
       );
+      const json = await query.json();
+      
+      if (json.routes && json.routes[0]) {
+        map.current.addSource('route', { type: 'geojson', data: { type: 'Feature', geometry: json.routes[0].geometry } });
+        map.current.addLayer({
+          id: 'route',
+          type: 'line', source: 'route',
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: { 'line-color': '#3b82f6', 'line-width': 5, 'line-opacity': 0.75 }
+        });
+      }
+    });
+  }, [routeData]);
 
-      watchIdRef.current = id;
-      setSharing(true);
-    } catch (err) {
-      // Error already logged
+  // 3. Tracking Logic
+  const startTracking = (data) => {
+    if (watchId) return;
+    let lastEtaUpdateTime = 0;
+
+    const id = navigator.geolocation.watchPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        setCurrentLocation({ lat: latitude, lng: longitude });
+        
+        socket.emit("driver:location", {
+          driverId: user.id || user._id,
+          routeId: data.route._id,
+          lat: latitude, lng: longitude
+        });
+
+        if (marker.current) {
+          marker.current.setLngLat([longitude, latitude]);
+        } else if (map.current) {
+          marker.current = new mapboxgl.Marker({ color: "#fbbf24", scale: 1.2 })
+            .setLngLat([longitude, latitude]).addTo(map.current);
+        }
+
+        // Proximity Logic
+        let currentActive = -1;
+        data.route.stops.forEach((stop, index) => {
+          const dist = getDistance(latitude, longitude, stop.coordinates.lat, stop.coordinates.lng);
+          if (dist < PROXIMITY_THRESHOLD) currentActive = index;
+        });
+
+        if (currentActive !== -1) setActiveStopIndex(currentActive);
+
+        // ETA & Distance to NEXT stop
+        const nextStop = data.route.stops[currentActive + 1];
+        if (nextStop) {
+          const d = getDistance(latitude, longitude, nextStop.coordinates.lat, nextStop.coordinates.lng);
+          setDistToNext(d.toFixed(2));
+
+          // Throttle ETA calls to every 30 seconds
+          const now = Date.now();
+          if (now - lastEtaUpdateTime > 30000) {
+            fetchAccurateETA({ lat: latitude, lng: longitude }, nextStop.coordinates);
+            lastEtaUpdateTime = now;
+          }
+        } else {
+          setDistToNext(null);
+          setEta(null);
+        }
+      },
+      (err) => console.error(err),
+      { enableHighAccuracy: true, distanceFilter: 10 }
+    );
+
+    setWatchId(id);
+    setIsSharing(true);
+    localStorage.setItem("driver_sharing_active", "true");
+    socket.emit("driver:startSharing", { driverId: user.id || user._id, routeId: data.route._id });
+  };
+
+  const toggleSharing = async () => {
+    if (!isSharing) {
+      await driverAPI.toggleSharing(true);
+      startTracking(routeData);
+    } else {
+      await driverAPI.toggleSharing(false);
+      navigator.geolocation.clearWatch(watchId);
+      setWatchId(null);
+      setIsSharing(false);
+      localStorage.setItem("driver_sharing_active", "false");
+      if (marker.current) marker.current.remove();
+      marker.current = null;
+      setDistToNext(null);
+      setEta(null);
     }
   };
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (watchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-      }
-      if (sharing && driverId && route?._id) {
-        stopSharing().catch(console.error);
-      }
-    };
-  }, [sharing, driverId, route]);
-
-  if (loading) {
-    return (
-      <div className={styles.container}>
-        <p>Loading driver data...</p>
-      </div>
-    );
-  }
+  const recenter = () => {
+    if (currentLocation) {
+      map.current.flyTo({ center: [currentLocation.lng, currentLocation.lat], zoom: 15 });
+    }
+  };
 
   return (
     <div className={styles.container}>
-      <h1 className={styles.heading}>Driver Dashboard</h1>
-      <LogoutButton />
-
-      {route && <p>Assigned Route: <strong>{route.name}</strong></p>}
-      {error && <p style={{ color: 'red' }}>{error}</p>}
-
-      <div className={styles.toggleWrapper}>
-        <span className={sharing ? styles.activeText : styles.inactiveText}>
-          {sharing ? "Location Sharing: ON" : "Location Sharing: OFF"}
-        </span>
-        <button
-          className={sharing ? styles.stopBtn : styles.startBtn}
-          onClick={handleToggle}
-          disabled={!driverId || !route?._id}
-        >
-          {sharing ? "Stop Sharing" : "Start Sharing"}
-        </button>
-      </div>
-
-      {sharing && (
-        <div className={styles.mapWrapper}>
-          <Map ref={mapRef} />
+      <div className={styles.sidebar}>
+        <div className={styles.controls}>
+          <button className={isSharing ? styles.stopBtn : styles.startBtn} onClick={toggleSharing}>
+            {isSharing ? "Stop Sharing Location" : "Start Sharing Location"}
+          </button>
+          <button className={styles.recenterBtn} onClick={recenter} disabled={!currentLocation}>
+            Recenter Map
+          </button>
         </div>
-      )}
+
+        {isSharing && (
+          <div className={styles.infoGrid}>
+            <div className={styles.infoCard}>
+              <span>Distance</span>
+              <h3>{distToNext ? `${distToNext} km` : "--"}</h3>
+            </div>
+            <div className={styles.infoCard}>
+              <span>Est. Time</span>
+              <h3>{eta ? `${eta} min` : "--"}</h3>
+            </div>
+          </div>
+        )}
+
+        <div className={styles.stopList}>
+          <div className={styles.listHeader}>
+             <h3>Route Progress</h3>
+             <p>{routeData?.route.name}</p>
+          </div>
+          {routeData?.route.stops.map((stop, index) => {
+            const isArrived = index <= activeStopIndex;
+            const isNext = index === activeStopIndex + 1;
+            return (
+              <div key={stop._id} className={`${styles.stopItem} ${isArrived ? styles.arrived : ""} ${isNext ? styles.nextStop : ""}`}>
+                 <span className={styles.order}>{isArrived ? "✓" : index + 1}</span>
+                 <div className={styles.stopInfo}>
+                    <p className={styles.stopName}>{stop.name}</p>
+                    {isNext && <span className={styles.nextTag}>Next Stop</span>}
+                 </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div ref={mapContainer} className={styles.mapContainer} />
     </div>
   );
 }
