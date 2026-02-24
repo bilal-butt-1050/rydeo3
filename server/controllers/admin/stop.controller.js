@@ -7,31 +7,34 @@ export const addStop = async (req, res) => {
     const { routeId } = req.params;
     const { name, coordinates, order } = req.body;
 
-    const route = await Route.findById(routeId);
-    if (!route) return res.status(404).json({ message: "Route not found" });
+    const stop = await Stop.create({ name, coordinates, order, route: routeId });
 
-    const stop = await Stop.create({
-      name,
-      coordinates,
-      order: order || 0,
-      route: routeId
-    });
-
-    route.stops.push(stop._id);
-
-    const stops = await Stop.find({ route: routeId }).sort({
-      order: 1,
-      createdAt: 1
-    });
-
-    route.startStop = stops[0]?._id || null;
-    route.endStop = stops.at(-1)?._id || null;
-
-    await route.save();
+    // Push to route array and save (the model hook handles start/end)
+    await Route.findByIdAndUpdate(routeId, { 
+      $push: { stops: stop._id } 
+    }, { new: true });
 
     res.status(201).json(stop);
   } catch (err) {
-    console.error("ADD STOP ERROR:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const deleteStop = async (req, res) => {
+  try {
+    const stop = await Stop.findById(req.params.id);
+    if (!stop) return res.status(404).json({ message: "Stop not found" });
+
+    // Check if students are using it
+    const studentUsing = await User.findOne({ preferredStop: stop._id });
+    if (studentUsing) return res.status(400).json({ message: "Stop is assigned to students" });
+
+    // Remove stop ID from Route's array
+    await Route.findByIdAndUpdate(stop.route, { $pull: { stops: stop._id } });
+    
+    await stop.deleteOne();
+    res.json({ message: "Stop deleted" });
+  } catch (err) {
     res.status(500).json({ message: "Server error" });
   }
 };
@@ -61,50 +64,6 @@ export const updateStop = async (req, res) => {
     res.json(stop);
   } catch (err) {
     console.error("UPDATE STOP ERROR:", err);
-    res.status(500).json({ message: "Server error" });
-  }
-};
-
-export const deleteStop = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const stop = await Stop.findById(id);
-    if (!stop) return res.status(404).json({ message: "Stop not found" });
-
-    const studentUsing = await User.findOne({
-      role: "student",
-      preferredStop: stop._id
-    });
-
-    if (studentUsing) {
-      return res.status(400).json({
-        message: "Cannot delete stop: used by students"
-      });
-    }
-
-    const route = await Route.findById(stop.route);
-    if (route) {
-      route.stops = route.stops.filter(
-        sid => sid.toString() !== stop._id.toString()
-      );
-
-      const remaining = await Stop.find({ route: route._id }).sort({
-        order: 1,
-        createdAt: 1
-      });
-
-      route.startStop = remaining[0]?._id || null;
-      route.endStop = remaining.at(-1)?._id || null;
-
-      await route.save();
-    }
-
-    await stop.remove();
-
-    res.json({ message: "Stop deleted" });
-  } catch (err) {
-    console.error("DELETE STOP ERROR:", err);
     res.status(500).json({ message: "Server error" });
   }
 };

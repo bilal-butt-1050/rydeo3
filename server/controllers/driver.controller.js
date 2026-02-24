@@ -1,88 +1,55 @@
-import { Driver } from "../models/user.model.js";
+import { Driver,Student } from "../models/user.model.js";
+import Route from "../models/route.model.js";
+import Stop from "../models/stop.model.js";
 
-export const updateLocation = async (req, res) => {
-  try {
-    // Get driver ID from authenticated user
-    const driverId = req.user?._id;
-
-    if (!driverId) {
-      return res.status(401).json({ 
-        success: false,
-        message: "Unauthorized" 
-      });
-    }
-
-    const { lat, lng } = req.body;
-
-    // Validate coordinates
-    if (lat == null || lng == null) {
-      return res.status(400).json({ 
-        success: false,
-        message: "Coordinates are required" 
-      });
-    }
-
-    const latNum = Number(lat);
-    const lngNum = Number(lng);
-
-    if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) {
-      return res.status(400).json({ 
-        success: false,
-        message: "Invalid coordinates" 
-      });
-    }
-
-    await Driver.findByIdAndUpdate(driverId, {
-      location: { lat: latNum, lng: lngNum }
-    });
-
-    return res.json({ 
-      success: true,
-      message: "Location updated" 
-    });
-  } catch (err) {
-    console.error("Location update error:", err);
-    res.status(500).json({ 
-      success: false,
-      message: "Server error" 
-    });
-  }
-};
-
+// Simplified Toggle - only use REST for the "Master Switch"
 export const toggleSharing = async (req, res) => {
   try {
-    // Get driver ID from authenticated user
-    const driverId = req.user?._id;
-
-    if (!driverId) {
-      return res.status(401).json({ 
-        success: false,
-        message: "Unauthorized" 
-      });
-    }
-
     const { state } = req.body;
-
-    if (typeof state !== "boolean") {
-      return res.status(400).json({ 
-        success: false,
-        message: "Sharing state must be boolean" 
-      });
-    }
-
-    await Driver.findByIdAndUpdate(driverId, {
-      isSharingLocation: state
-    });
+    const driver = await Driver.findByIdAndUpdate(
+      req.user._id, 
+      { isSharingLocation: state }, 
+      { new: true }
+    );
 
     return res.json({
       success: true,
-      message: `Sharing turned ${state ? "on" : "off"}`
+      message: `Bus is now ${state ? "Online" : "Offline"}`,
+      isSharingLocation: driver.isSharingLocation
     });
   } catch (err) {
-    console.error("Toggle sharing error:", err);
-    res.status(500).json({ 
-      success: false,
-      message: "Server error" 
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+export const getAssignedRoute = async (req, res) => {
+  try {
+    // 1. Find the route assigned to this driver
+    const route = await Route.findById(req.user.route)
+      .populate({
+        path: "stops",
+        options: { sort: { order: 1 } } // Ensure stops are in chronological order
+      });
+
+    if (!route) {
+      return res.status(404).json({ success: false, message: "No route assigned" });
+    }
+
+    // 2. Find all students assigned to this route
+    // We populate their preferredStop so the driver knows where to pick them up
+    const students = await Student.find({ route: route._id })
+      .select("name loginID preferredStop")
+      .populate("preferredStop", "name");
+
+    return res.json({
+      success: true,
+      data: {
+        route,
+        students
+      }
     });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Server error" });
   }
 };

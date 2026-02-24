@@ -1,41 +1,30 @@
 import { Student } from "../../models/user.model.js";
-import Route from "../../models/route.model.js";
 import Stop from "../../models/stop.model.js";
 
 export const createStudent = async (req, res) => {
   try {
     const { name, loginID, password, route, preferredStop } = req.body;
 
-    if (!route) {
-      return res.status(400).json({ message: "Route is required" });
-    }
+    // 1. Validate Input
+    if (!route || !loginID) return res.status(400).json({ message: "Missing required fields" });
 
-    const routeObj = await Route.findById(route);
-    if (!routeObj) {
-      return res.status(404).json({ message: "Route not found" });
-    }
+    // 2. Check for duplicate LoginID
+    const existing = await Student.findOne({ loginID });
+    if (existing) return res.status(400).json({ message: "Student LoginID already exists" });
 
+    // 3. Validate Stop belongs to Route
     if (preferredStop) {
-      const stopObj = await Stop.findOne({ _id: preferredStop, route });
-      if (!stopObj) {
-        return res.status(400).json({
-          message: "Selected stop does not belong to the selected route"
-        });
-      }
+      const stopExists = await Stop.findOne({ _id: preferredStop, route: route });
+      if (!stopExists) return res.status(400).json({ message: "Stop does not belong to this route" });
     }
 
     const student = await Student.create({
-      name,
-      loginID,
-      password,
-      route,
-      preferredStop
+      name, loginID, password, route, preferredStop, role: "student"
     });
 
-    res.status(201).json(student);
+    res.status(201).json({ success: true, student });
   } catch (err) {
-    console.error("CREATE STUDENT ERROR:", err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 };
 
@@ -84,7 +73,7 @@ export const listStudents = async (req, res) => {
 
 export const getStudent = async (req, res) => {
   try {
-    const student = await Student.findById(req.params.id).select("-password");
+    const student = await Student.findById(req.params.id).populate("route preferredStop").select("-password");
     if (!student) return res.status(404).json({ message: "Student not found" });
 
     res.json(student);

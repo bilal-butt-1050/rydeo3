@@ -1,8 +1,9 @@
 import express from "express";
-import {updateLocation, toggleSharing} from "../controllers/driver.controller.js";
+import {toggleSharing, getAssignedRoute} from "../controllers/driver.controller.js";
 
 const router = express.Router();
-router.post("/update-location", updateLocation);
 router.post("/sharing", toggleSharing);
+router.get("/assigned-route", getAssignedRoute);
+
 
 export default router;

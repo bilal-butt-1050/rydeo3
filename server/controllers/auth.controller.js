@@ -96,3 +96,41 @@ export const getMe = async (req, res) => {
     return fail(res, "Server error", 500);
   }
 };
+
+/* ---------------- CHANGE PASSWORD ---------------- */
+export const changePassword = async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+
+  try {
+    // 1. Basic Validation
+    if (!currentPassword || !newPassword) {
+      return fail(res, "Both current and new passwords are required", 400);
+    }
+
+    // 2. Find user (req.user is populated by your protect middleware)
+    const user = await User.findById(req.user._id);
+    if (!user) return fail(res, "User not found", 404);
+
+    // 3. Verify current password
+    const isMatch = await user.matchPassword(currentPassword);
+    if (!isMatch) {
+      return fail(res, "Incorrect current password", 401);
+    }
+
+    // 4. Check if new password is same as old
+    if (currentPassword === newPassword) {
+      return fail(res, "New password cannot be the same as the current one", 400);
+    }
+
+    // 5. Update and Save
+    // The pre-save hook in your user.model.js will automatically hash this
+    user.password = newPassword;
+    await user.save();
+
+    return success(res, {}, "Password updated successfully");
+
+  } catch (error) {
+    console.error("CHANGE PASSWORD ERROR:", error);
+    return fail(res, "Server error during password update", 500);
+  }
+};

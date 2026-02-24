@@ -4,10 +4,7 @@ import {getDriver, createDriver, updateDriver, deleteDriver, listDrivers} from "
 import {getRoute, createRoute, updateRoute, deleteRoute, listRoutes} from "../controllers/admin/route.controller.js";
 import {getStopsByRoute, addStop, updateStop, deleteStop} from "../controllers/admin/stop.controller.js";
 
-
 const router = express.Router();
-
-// Protect all admin actions
 
 /* ---------------- STUDENTS ---------------- */
 router.post("/students", createStudent);
