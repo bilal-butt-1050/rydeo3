@@ -1,45 +1,44 @@
-.container {
-  padding: 2.5rem;
+.container { display: flex; height: 100vh; width: 100vw; background: #f1f5f9; }
+
+.sidebar {
+  width: 350px;
+  background: white;
+  border-right: 1px solid #e2e8f0;
+  padding: 1.5rem;
+  overflow-y: auto;
 }
 
-.header {
-  margin-bottom: 2rem;
-}
+.mapWrapper { flex: 1; position: relative; height: 100%; }
+.mapView { width: 100%; height: 100%; }
 
-.header h1 {
-  font-size: 1.875rem;
-  color: #111827;
-  margin: 0;
-}
-
-.header p {
-  color: #6b7280;
-}
-
-.statsGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 1.5rem;
+.recenterBtn {
+  position: absolute; bottom: 30px; right: 30px;
+  background: #1e293b; color: white; border: none;
+  padding: 12px 24px; border-radius: 50px; cursor: pointer;
+  font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
 }
 
 .card {
-  background: white;
-  padding: 1.5rem;
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-  border: 1px solid #e5e7eb;
+  padding: 1rem; border: 1px solid #e2e8f0; border-radius: 12px;
+  margin-bottom: 0.8rem; cursor: pointer; display: flex;
+  justify-content: space-between; align-items: center;
+}
+.card:hover { border-color: #3b82f6; }
+
+.stopMarker { width: 12px; height: 12px; background: #1e293b; border: 2px solid white; border-radius: 50%; }
+.stopLabel {
+  position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
+  background: white; font-size: 10px; padding: 2px 6px; font-weight: 800;
+  border-radius: 4px; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-.card h3 {
-  margin: 0;
-  font-size: 0.875rem;
-  color: #6b7280;
-  text-transform: uppercase;
+.progressList { margin-top: 2rem; }
+.stopItem { display: flex; gap: 1rem; padding-bottom: 1.5rem; position: relative; }
+.stopItem::before {
+  content: ""; position: absolute; left: 6px; top: 15px; bottom: 0; width: 2px; background: #e2e8f0;
 }
-
-.stat {
-  margin: 0.5rem 0 0 0;
-  font-size: 2.25rem;
-  font-weight: 700;
-  color: #111827;
-}
+.stopItem:last-child::before { display: none; }
+.dot { width: 14px; height: 14px; background: #cbd5e1; border-radius: 50%; border: 2px solid white; z-index: 2; }
+.passed .dot { background: #3b82f6; }
+.passed .stopText p { color: #3b82f6; font-weight: 600; }
+.statusBadge { font-size: 0.6rem; background: #dcfce7; color: #166534; padding: 2px 6px; border-radius: 4px; }

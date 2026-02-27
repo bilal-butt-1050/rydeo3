@@ -9,252 +9,284 @@ import styles from "./page.module.css";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
-const PROXIMITY_THRESHOLD = 0.2; // 200 meters
-
 export default function DriverConsole() {
   const { user } = useAuth();
   const mapContainer = useRef(null);
   const map = useRef(null);
-  const marker = useRef(null);
-  
+  const driverMarker = useRef(null);
+  const watchId = useRef(null);
+  const prevLocation = useRef(null);
+
   const [routeData, setRouteData] = useState(null);
   const [isSharing, setIsSharing] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(null);
-  const [watchId, setWatchId] = useState(null);
   const [activeStopIndex, setActiveStopIndex] = useState(-1);
   const [distToNext, setDistToNext] = useState(null);
   const [eta, setEta] = useState(null);
+  const [isEmergency, setIsEmergency] = useState(false);
+  const [waitingList, setWaitingList] = useState({});
 
-  // Haversine Distance Helper (for proximity detection)
+  // Summary States
+  const [startTime, setStartTime] = useState(null);
+  const [totalDistance, setTotalDistance] = useState(0);
+  const [showSummary, setShowSummary] = useState(false);
+
+  // Helper: Haversine Distance (KM)
   const getDistance = (lat1, lon1, lat2, lon2) => {
-    const R = 6371; 
+    const R = 6371;
     const dLat = (lat2 - lat1) * (Math.PI / 180);
     const dLon = (lon2 - lon1) * (Math.PI / 180);
-    const a = 
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c; 
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   };
 
-  // Fetch Accurate ETA from Mapbox Directions API
-const fetchAccurateETA = async (startLoc, endLoc) => {
-    try {
-      // Use 'driving-traffic' for high-accuracy real-time calculations
-      const profile = "mapbox/driving-traffic"; 
-      const url = `https://api.mapbox.com/directions/v5/${profile}/${startLoc.lng},${startLoc.lat};${endLoc.lng},${endLoc.lat}?access_token=${mapboxgl.accessToken}`;
-      
-      const response = await fetch(url);
-      const data = await response.json();
-      
-      if (data.routes && data.routes[0]) {
-        // duration is in seconds
-        const durationSeconds = data.routes[0].duration; 
-        
-        // Buses typically move 10-20% slower than the average car due to size/stops
-        // If you feel Mapbox is being too conservative (6 mins vs 3 mins), 
-        // you can apply a "Confidence Factor" or just use the raw data.
-        const minutes = Math.round(durationSeconds / 60);
-        
-        setEta(minutes);
-      }
-    } catch (err) {
-      console.error("ETA Fetch Error:", err);
+  const triggerEmergency = () => {
+    const confirmApp = confirm("Are you sure you want to trigger an Emergency Alert? All students will be notified.");
+    if (confirmApp) {
+      setIsEmergency(true);
+      socket.emit("driver:emergency", {
+        routeId: routeData.route._id,
+        message: "Technical issue with the bus. Please stay at your stops; we are coordinating a backup."
+      });
+      setTimeout(() => setIsEmergency(false), 10000);
     }
   };
 
-  // 1. Initial Load
   useEffect(() => {
     const init = async () => {
       try {
         const res = await driverAPI.getAssignedRoute();
         setRouteData(res.data.data);
-        
-        const savedSharing = localStorage.getItem("driver_sharing_active") === "true";
-        if (savedSharing) {
-          startTracking(res.data.data);
-        }
-      } catch (err) {
-        console.error("Failed to fetch route", err);
-      }
+      } catch (err) { console.error("Failed to fetch route", err); }
     };
     init();
     if (!socket.connected) socket.connect();
 
     return () => {
-      if (watchId) navigator.geolocation.clearWatch(watchId);
+      if (watchId.current) navigator.geolocation.clearWatch(watchId.current);
+      socket.emit("driver:stopSharing", { driverId: user?.id, routeId: routeData?.route._id });
     };
   }, []);
 
-  // 2. Map Setup
   useEffect(() => {
     if (!routeData || map.current) return;
-
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
-      style: "mapbox://styles/mapbox/streets-v12",
+      style: "mapbox://styles/mapbox/navigation-night-v1",
       center: [routeData.route.stops[0].coordinates.lng, routeData.route.stops[0].coordinates.lat],
       zoom: 13,
     });
 
-    map.current.addControl(new mapboxgl.NavigationControl());
-
-    map.current.on("load", async () => {
-      // Draw Markers
-      routeData.route.stops.forEach((stop, i) => {
-        new mapboxgl.Marker({ color: i === 0 ? "#10b981" : i === routeData.route.stops.length - 1 ? "#ef4444" : "#3b82f6" })
-          .setLngLat([stop.coordinates.lng, stop.coordinates.lat])
-          .setPopup(new mapboxgl.Popup().setHTML(`<b>${stop.name}</b>`))
-          .addTo(map.current);
+    map.current.on("load", () => {
+      routeData.route.stops.forEach((stop) => {
+        const el = document.createElement('div');
+        el.className = styles.stopMarker;
+        const label = document.createElement('span');
+        label.className = styles.markerLabel;
+        label.innerText = stop.name;
+        el.appendChild(label);
+        new mapboxgl.Marker(el).setLngLat([stop.coordinates.lng, stop.coordinates.lat]).addTo(map.current);
       });
 
-      // Draw Route Polyline
-      const coords = routeData.route.stops.map(s => `${s.coordinates.lng},${s.coordinates.lat}`).join(';');
-      const query = await fetch(
-        `https://api.mapbox.com/directions/v5/mapbox/driving/${coords}?geometries=geojson&overview=full&access_token=${mapboxgl.accessToken}`
-      );
-      const json = await query.json();
-      
-      if (json.routes && json.routes[0]) {
-        map.current.addSource('route', { type: 'geojson', data: { type: 'Feature', geometry: json.routes[0].geometry } });
-        map.current.addLayer({
-          id: 'route',
-          type: 'line', source: 'route',
-          layout: { 'line-join': 'round', 'line-cap': 'round' },
-          paint: { 'line-color': '#3b82f6', 'line-width': 5, 'line-opacity': 0.75 }
-        });
-      }
+      map.current.addSource('dynamic-route', {
+        type: 'geojson',
+        data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [] } }
+      });
+
+      map.current.addLayer({
+        id: 'route-line',
+        type: 'line',
+        source: 'dynamic-route',
+        paint: { 'line-color': '#3b82f6', 'line-width': 6, 'line-opacity': 0.8 }
+      });
     });
   }, [routeData]);
 
-  // 3. Tracking Logic
-  const startTracking = (data) => {
-    if (watchId) return;
-    let lastEtaUpdateTime = 0;
+  useEffect(() => {
+    if (!socket.connected) return;
+    socket.on("driver:studentWaiting", ({ stopId }) => {
+      setWaitingList(prev => ({ ...prev, [stopId]: (prev[stopId] || 0) + 1 }));
+      new Audio('/notification.mp3').play().catch(() => { });
+    });
+    return () => socket.off("driver:studentWaiting");
+  }, []);
 
-    const id = navigator.geolocation.watchPosition(
+  const updateDynamicRoute = async (driverLoc, stops, currentIndex) => {
+    const remainingStops = stops.slice(currentIndex + 1);
+    if (remainingStops.length === 0) return;
+    const coords = [`${driverLoc.lng},${driverLoc.lat}`, ...remainingStops.map(s => `${s.coordinates.lng},${s.coordinates.lat}`)].join(';');
+    try {
+      const res = await fetch(`https://api.mapbox.com/directions/v5/mapbox/driving/${coords}?geometries=geojson&access_token=${mapboxgl.accessToken}`);
+      const data = await res.json();
+      if (data.routes && data.routes[0]) {
+        map.current.getSource('dynamic-route').setData(data.routes[0].geometry);
+        setEta(Math.round(data.routes[0].duration / 60));
+        setDistToNext((data.routes[0].distance / 1000).toFixed(2));
+      }
+    } catch (e) { console.error("Routing error", e); }
+  };
+
+  const startTracking = () => {
+    if (!navigator.geolocation) return alert("Geolocation not supported");
+    watchId.current = navigator.geolocation.watchPosition(
       (pos) => {
         const { latitude, longitude } = pos.coords;
-        setCurrentLocation({ lat: latitude, lng: longitude });
-        
+        const loc = { lat: latitude, lng: longitude };
+        setCurrentLocation(loc);
+
+        // Calculate Total Distance for Summary
+        if (prevLocation.current) {
+          const d = getDistance(prevLocation.current.lat, prevLocation.current.lng, latitude, longitude);
+          setTotalDistance(prev => prev + d);
+        }
+        prevLocation.current = loc;
+
         socket.emit("driver:location", {
           driverId: user.id || user._id,
-          routeId: data.route._id,
-          lat: latitude, lng: longitude
+          routeId: routeData.route._id,
+          lat: latitude,
+          lng: longitude,
+          // Add these for the Admin dashboard:
+          totalDistance: totalDistance.toFixed(2),
+          duration: Math.floor((Date.now() - startTime) / 60000),
+          driverName: user.name,
+          routeName: routeData.route.name
         });
 
-        if (marker.current) {
-          marker.current.setLngLat([longitude, latitude]);
-        } else if (map.current) {
-          marker.current = new mapboxgl.Marker({ color: "#fbbf24", scale: 1.2 })
-            .setLngLat([longitude, latitude]).addTo(map.current);
-        }
-
-        // Proximity Logic
-        let currentActive = -1;
-        data.route.stops.forEach((stop, index) => {
-          const dist = getDistance(latitude, longitude, stop.coordinates.lat, stop.coordinates.lng);
-          if (dist < PROXIMITY_THRESHOLD) currentActive = index;
-        });
-
-        if (currentActive !== -1) setActiveStopIndex(currentActive);
-
-        // ETA & Distance to NEXT stop
-        const nextStop = data.route.stops[currentActive + 1];
-        if (nextStop) {
-          const d = getDistance(latitude, longitude, nextStop.coordinates.lat, nextStop.coordinates.lng);
-          setDistToNext(d.toFixed(2));
-
-          // Throttle ETA calls to every 30 seconds
-          const now = Date.now();
-          if (now - lastEtaUpdateTime > 30000) {
-            fetchAccurateETA({ lat: latitude, lng: longitude }, nextStop.coordinates);
-            lastEtaUpdateTime = now;
-          }
+        if (!driverMarker.current) {
+          const el = document.createElement('div');
+          el.className = styles.driverPointer;
+          driverMarker.current = new mapboxgl.Marker(el).setLngLat([longitude, latitude]).addTo(map.current);
         } else {
-          setDistToNext(null);
-          setEta(null);
+          driverMarker.current.setLngLat([longitude, latitude]);
         }
+
+        let nearestIdx = activeStopIndex;
+        routeData.route.stops.forEach((stop, idx) => {
+          const d = getDistance(latitude, longitude, stop.coordinates.lat, stop.coordinates.lng);
+          if (d < 0.2) nearestIdx = idx;
+        });
+
+        setActiveStopIndex(nearestIdx);
+        updateDynamicRoute(loc, routeData.route.stops, nearestIdx);
       },
       (err) => console.error(err),
-      { enableHighAccuracy: true, distanceFilter: 10 }
+      { enableHighAccuracy: true }
     );
-
-    setWatchId(id);
-    setIsSharing(true);
-    localStorage.setItem("driver_sharing_active", "true");
-    socket.emit("driver:startSharing", { driverId: user.id || user._id, routeId: data.route._id });
   };
 
   const toggleSharing = async () => {
-    if (!isSharing) {
-      await driverAPI.toggleSharing(true);
-      startTracking(routeData);
-    } else {
-      await driverAPI.toggleSharing(false);
-      navigator.geolocation.clearWatch(watchId);
-      setWatchId(null);
-      setIsSharing(false);
-      localStorage.setItem("driver_sharing_active", "false");
-      if (marker.current) marker.current.remove();
-      marker.current = null;
-      setDistToNext(null);
-      setEta(null);
-    }
-  };
+    const nextState = !isSharing;
+    try {
+      await driverAPI.toggleSharing(nextState);
+      setIsSharing(nextState);
 
-  const recenter = () => {
-    if (currentLocation) {
-      map.current.flyTo({ center: [currentLocation.lng, currentLocation.lat], zoom: 15 });
-    }
+      if (nextState) {
+        setStartTime(Date.now());
+        setTotalDistance(0);
+        prevLocation.current = null;
+        socket.emit("driver:startSharing", { driverId: user.id || user._id, routeId: routeData.route._id });
+        startTracking();
+      } else {
+        if (watchId.current) navigator.geolocation.clearWatch(watchId.current);
+        socket.disconnect();
+        setShowSummary(true);
+        setTimeout(() => socket.connect(), 1000);
+
+        if (driverMarker.current) driverMarker.current.remove();
+        driverMarker.current = null;
+        setDistToNext(null);
+        setEta(null);
+        if (map.current.getSource('dynamic-route')) {
+          map.current.getSource('dynamic-route').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: [] } });
+        }
+      }
+    } catch (err) { alert("Toggle failed"); }
   };
 
   return (
     <div className={styles.container}>
       <div className={styles.sidebar}>
-        <div className={styles.controls}>
+        <div className={styles.card}>
+          <h2 className={styles.routeTitle}>{routeData?.route.name || "Loading..."}</h2>
           <button className={isSharing ? styles.stopBtn : styles.startBtn} onClick={toggleSharing}>
-            {isSharing ? "Stop Sharing Location" : "Start Sharing Location"}
-          </button>
-          <button className={styles.recenterBtn} onClick={recenter} disabled={!currentLocation}>
-            Recenter Map
+            {isSharing ? "⏹ End Session" : "▶ Start Sharing"}
           </button>
         </div>
 
         {isSharing && (
-          <div className={styles.infoGrid}>
-            <div className={styles.infoCard}>
-              <span>Distance</span>
-              <h3>{distToNext ? `${distToNext} km` : "--"}</h3>
+          <>
+            <div className={styles.statsRow}>
+              <div className={styles.statBox}>
+                <small>NEXT STOP</small>
+                <p>{distToNext || "--"} km</p>
+              </div>
+              <div className={styles.statBox}>
+                <small>ETA</small>
+                <p>{eta || "--"} min</p>
+              </div>
             </div>
-            <div className={styles.infoCard}>
-              <span>Est. Time</span>
-              <h3>{eta ? `${eta} min` : "--"}</h3>
-            </div>
-          </div>
+            <button
+              className={`${styles.emergencyBtn} ${isEmergency ? styles.emergencyActive : ""}`}
+              onClick={triggerEmergency}
+            >
+              {isEmergency ? "⚠️ ALERT SENT" : "🚨 EMERGENCY ALERT"}
+            </button>
+          </>
         )}
 
-        <div className={styles.stopList}>
-          <div className={styles.listHeader}>
-             <h3>Route Progress</h3>
-             <p>{routeData?.route.name}</p>
-          </div>
+        <div className={styles.timeline}>
           {routeData?.route.stops.map((stop, index) => {
-            const isArrived = index <= activeStopIndex;
-            const isNext = index === activeStopIndex + 1;
+            const isPassed = index <= activeStopIndex;
             return (
-              <div key={stop._id} className={`${styles.stopItem} ${isArrived ? styles.arrived : ""} ${isNext ? styles.nextStop : ""}`}>
-                 <span className={styles.order}>{isArrived ? "✓" : index + 1}</span>
-                 <div className={styles.stopInfo}>
-                    <p className={styles.stopName}>{stop.name}</p>
-                    {isNext && <span className={styles.nextTag}>Next Stop</span>}
-                 </div>
+              <div key={stop._id} className={`${styles.timelineItem} ${isPassed ? styles.passed : ""}`}>
+                <div className={styles.dot} />
+                <div className={styles.info}>
+                  <p className={styles.name}>{stop.name}</p>
+                  {waitingList[stop._id] > 0 && (
+                    <span className={styles.waitingBadge}>👥 {waitingList[stop._id]} waiting</span>
+                  )}
+                  {index === activeStopIndex + 1 && <span className={styles.nextBadge}>UP NEXT</span>}
+                </div>
               </div>
             );
           })}
         </div>
       </div>
-      <div ref={mapContainer} className={styles.mapContainer} />
+
+      <div ref={mapContainer} className={styles.map} />
+
+      {/* SHIFT SUMMARY OVERLAY */}
+      {showSummary && (
+        <div className={styles.summaryOverlay}>
+          <div className={styles.summaryCard}>
+            <div className={styles.summaryHeader}>
+              <div className={styles.checkIcon}>✓</div>
+              <h2>Shift Completed!</h2>
+              <p>{new Date().toLocaleDateString('en-PK', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+            </div>
+
+            <div className={styles.summaryStats}>
+              <div className={styles.sumStat}>
+                <span>Duration</span>
+                <p>{startTime ? Math.floor((Date.now() - startTime) / 60000) : 0} mins</p>
+              </div>
+              <div className={styles.sumStat}>
+                <span>Distance</span>
+                <p>{totalDistance.toFixed(2)} km</p>
+              </div>
+              <div className={styles.sumStat}>
+                <span>Stops</span>
+                <p>{activeStopIndex + 1} / {routeData?.route.stops.length}</p>
+              </div>
+            </div>
+
+            <button className={styles.closeSummaryBtn} onClick={() => setShowSummary(false)}>
+              Back to Dashboard
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
